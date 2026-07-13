@@ -4,6 +4,7 @@
 #include "SDL3/SDL_init.h"
 #include "SDL3/SDL_log.h"
 #include "SDL3/SDL_pixels.h"
+#include "SDL3/SDL_rect.h"
 #include "SDL3/SDL_render.h"
 #include "SDL3/SDL_stdinc.h"
 #include "SDL3/SDL_surface.h"
@@ -24,6 +25,7 @@ struct GameCTX {
     SDL_Renderer *renderer = nullptr;
     SDL_Window *window = nullptr;
     char *map = nullptr;
+    int mapSize = 0;
     std::array<SDL_Texture *, 4> textures = {};
 };
 
@@ -34,6 +36,7 @@ void InitMap(GameCTX &ctx, int size) {
     }
     int mapSize = size * size;
     ctx.map = new char[mapSize];
+    ctx.mapSize = size;
 
     for (int i = 0; i < size; i++) {
         for (int j = 0; j < size; j++) {
@@ -69,6 +72,7 @@ void DestroyMap(GameCTX &ctx) {
 
     delete[] ctx.map;
     ctx.map = nullptr;
+    ctx.mapSize = 0;
 }
 
 SDL_Texture *LoadTexture(GameCTX &ctx, const char *fileName) {
@@ -94,9 +98,60 @@ SDL_Texture *LoadTexture(GameCTX &ctx, const char *fileName) {
 }
 
 void DrawFrame(GameCTX &ctx) {
-    SDL_SetRenderDrawColorFloat(ctx.renderer, 1.0f, 1.0f, 1.0f, SDL_ALPHA_OPAQUE_FLOAT);
+    SDL_SetRenderDrawColorFloat(ctx.renderer, 0.0f, 0.0f, 0.0f, SDL_ALPHA_OPAQUE_FLOAT);
+
+    int screenWidth = 0;
+    int screenHeight = 0;
+    SDL_GetWindowSize(ctx.window, &screenWidth, &screenHeight);
+
+    int mapSpace = screenWidth < screenHeight ? screenWidth : screenHeight;
+    float scale = static_cast<float>(mapSpace) /
+                  static_cast<float>(ctx.mapSize * ctx.textures[TEXTURE_GROUND]->h);
+
+    float tileWidth = static_cast<float>(ctx.textures[TEXTURE_GROUND]->h) * scale;
+    float tileHeight = static_cast<float>(ctx.textures[TEXTURE_GROUND]->w) * scale;
+
+    SDL_FRect dst_rect;
+
+    dst_rect.w = tileWidth;
+    dst_rect.h = tileHeight;
+    dst_rect.x = 0.0f;
+    dst_rect.y = 0.0f;
+
+    float xAxisOrigin =
+        static_cast<float>(screenWidth) / 2.0f - static_cast<float>(ctx.mapSize) / 2.0f * tileWidth;
+
+    float yAxisOrigin = static_cast<float>(screenHeight) / 2.0f -
+                        static_cast<float>(ctx.mapSize) / 2.0f * tileHeight;
 
     SDL_RenderClear(ctx.renderer);
+
+    for (int i = 0; i < ctx.mapSize; i++) {
+        for (int j = 0; j < ctx.mapSize; j++) {
+            dst_rect.x = xAxisOrigin + static_cast<float>(i) * tileWidth;
+            dst_rect.y = yAxisOrigin + static_cast<float>(j) * tileHeight;
+
+            int tileIndex = (i * ctx.mapSize) + j;
+
+            switch (ctx.map[tileIndex]) {
+            case 'b':
+                SDL_RenderTexture(ctx.renderer, ctx.textures[TEXTURE_BARRIER], nullptr, &dst_rect);
+                break;
+            case '0':
+                SDL_RenderTexture(ctx.renderer, ctx.textures[TEXTURE_GROUND], nullptr, &dst_rect);
+                break;
+            case 's':
+                SDL_RenderTexture(ctx.renderer, ctx.textures[TEXTURE_SNAKE], nullptr, &dst_rect);
+                break;
+            case 'f':
+                SDL_RenderTexture(ctx.renderer, ctx.textures[TEXTURE_FOOD], nullptr, &dst_rect);
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
     SDL_RenderPresent(ctx.renderer);
 }
 

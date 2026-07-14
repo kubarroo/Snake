@@ -6,8 +6,10 @@
 #include "SDL3/SDL_pixels.h"
 #include "SDL3/SDL_rect.h"
 #include "SDL3/SDL_render.h"
+#include "SDL3/SDL_scancode.h"
 #include "SDL3/SDL_stdinc.h"
 #include "SDL3/SDL_surface.h"
+#include "SDL3/SDL_timer.h"
 #include "SDL3/SDL_video.h"
 #include <SDL3/SDL.h>
 #include <array>
@@ -21,12 +23,27 @@
 #define TEXTURE_SNAKE 2
 #define TEXTURE_FOOD 3
 
+enum Direction { Up, Down, Left, Right };
+
+struct SnakeBodyPart {
+    SnakeBodyPart *nextBodyPart = nullptr;
+    int x = 0;
+    int y = 0;
+};
+
 struct GameCTX {
     SDL_Renderer *renderer = nullptr;
     SDL_Window *window = nullptr;
+    double deltaTime = 0.0;
+
     char *map = nullptr;
     int mapSize = 0;
+
     std::array<SDL_Texture *, 4> textures = {};
+
+    SnakeBodyPart *snakeHead = nullptr;
+    Direction snakeDirection = Direction::Up;
+    double snakeSpeed = 175.0 / 1000.0; // miliseconds to move 1 field
 };
 
 void InitMap(GameCTX &ctx, int size) {
@@ -53,6 +70,10 @@ void InitMap(GameCTX &ctx, int size) {
     int center = static_cast<int>(std::ceil(size / 2.0));
     int centerIndex = (center * size) + center;
     ctx.map[centerIndex] = 's';
+    if (ctx.snakeHead != nullptr) {
+        ctx.snakeHead->x = center;
+        ctx.snakeHead->y = center;
+    }
 }
 
 void DebugPrintMap(GameCTX &ctx, int size) {
@@ -155,6 +176,64 @@ void DrawFrame(GameCTX &ctx) {
     SDL_RenderPresent(ctx.renderer);
 }
 
+void MoveSnake(GameCTX &ctx) {
+    int checkXDir = 0;
+    int checkYDir = 0;
+
+    switch (ctx.snakeDirection) {
+    case Direction::Up:
+        checkXDir = 0;
+        checkYDir = -1;
+        break;
+    case Direction::Down:
+        checkXDir = 0;
+        checkYDir = 1;
+        break;
+    case Direction::Left:
+        checkXDir = -1;
+        checkYDir = 0;
+        break;
+    case Direction::Right:
+        checkXDir = 1;
+        checkYDir = 0;
+        break;
+    }
+
+    int checkX = ctx.snakeHead->x + checkXDir;
+    int checkY = ctx.snakeHead->y + checkYDir;
+
+    int checkIndex = (checkX * ctx.mapSize) + checkY;
+    int oldPosIndex = (ctx.snakeHead->x * ctx.mapSize) + ctx.snakeHead->y;
+
+    switch (ctx.map[checkIndex]) {
+    case 'b':
+        break;
+    case 'f':
+        break;
+    case '0':
+        ctx.map[checkIndex] = 's';
+        ctx.map[oldPosIndex] = '0';
+        ctx.snakeHead->x = checkX;
+        ctx.snakeHead->y = checkY;
+        break;
+    case 's':
+        break;
+    default:
+        break;
+    }
+}
+
+void DestroySnake(GameCTX &ctx) {
+    SnakeBodyPart *currentPart = ctx.snakeHead;
+    SnakeBodyPart *nextPart = nullptr;
+    while (currentPart != nullptr) {
+        nextPart = currentPart->nextBodyPart;
+        delete currentPart;
+        currentPart = nextPart;
+    }
+    ctx.snakeHead = nullptr;
+}
+
 int main() {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Couldn't initialize SDL: %s", SDL_GetError());
@@ -172,6 +251,8 @@ int main() {
     bool isRunning = true;
     SDL_Event event;
 
+    ctx.snakeHead = new SnakeBodyPart;
+
     constexpr int MAP_SIZE = 40;
     InitMap(ctx, MAP_SIZE);
     DebugPrintMap(ctx, MAP_SIZE);
@@ -181,15 +262,52 @@ int main() {
     ctx.textures[TEXTURE_SNAKE] = LoadTexture(ctx, "snake.png");
     ctx.textures[TEXTURE_FOOD] = LoadTexture(ctx, "food.png");
 
+    Uint64 lastCounter = SDL_GetPerformanceCounter();
+    double moveCounter = 0.0;
+
     while (isRunning) {
+        Uint64 currentCounter = SDL_GetPerformanceCounter();
+        ctx.deltaTime = static_cast<double>(currentCounter - lastCounter) /
+                        static_cast<double>(SDL_GetPerformanceFrequency());
+        lastCounter = currentCounter;
+
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
                 isRunning = false;
             }
+            if (event.type == SDL_EVENT_KEY_DOWN) {
+                switch (event.key.scancode) {
+                    case SDL_SCANCODE_UP:
+                        if (ctx.snakeDirection != Direction::Down)
+                            ctx.snakeDirection = Direction::Up;
+                    break;
+                    case SDL_SCANCODE_DOWN:
+                        if (ctx.snakeDirection != Direction::Up)
+                            ctx.snakeDirection = Direction::Down;
+                    break;
+                    case SDL_SCANCODE_LEFT:
+                        if (ctx.snakeDirection != Direction::Right)
+                            ctx.snakeDirection = Direction::Left;
+                    break;
+                    case SDL_SCANCODE_RIGHT:
+                        if (ctx.snakeDirection != Direction::Left)
+                            ctx.snakeDirection = Direction::Right;
+                    break;
+                    default: break;
+                }
+            }
         }
+
+        moveCounter += ctx.deltaTime;
+        if (moveCounter >= ctx.snakeSpeed) {
+            moveCounter -= ctx.snakeSpeed;
+            MoveSnake(ctx);
+        }
+
         DrawFrame(ctx);
     }
 
+    DestroySnake(ctx);
     DestroyMap(ctx);
 
     for (auto *texture : ctx.textures) {

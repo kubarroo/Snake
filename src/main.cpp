@@ -42,6 +42,7 @@ struct GameCTX {
     std::array<SDL_Texture *, 4> textures = {};
 
     SnakeBodyPart *snakeHead = nullptr;
+    SnakeBodyPart *snakeTail = nullptr;
     Direction snakeDirection = Direction::Up;
     double snakeSpeed = 175.0 / 1000.0; // miliseconds to move 1 field
 };
@@ -176,7 +177,22 @@ void DrawFrame(GameCTX &ctx) {
     SDL_RenderPresent(ctx.renderer);
 }
 
-void MoveSnake(GameCTX &ctx) {
+void SpawnFood(GameCTX &ctx) {
+    int index = 0;
+    int x = rand() % ctx.mapSize;
+    int y = rand() % ctx.mapSize;
+    index = (x * ctx.mapSize) + y;
+
+    while(ctx.map[index] != '0') {
+        x = rand() % ctx.mapSize;
+        y = rand() % ctx.mapSize;
+        index = (x * ctx.mapSize) + y;
+    }
+
+    ctx.map[index] = 'f';
+}
+
+void UpdateSnake(GameCTX &ctx) {
     int checkXDir = 0;
     int checkYDir = 0;
 
@@ -203,13 +219,13 @@ void MoveSnake(GameCTX &ctx) {
     int checkY = ctx.snakeHead->y + checkYDir;
 
     int checkIndex = (checkX * ctx.mapSize) + checkY;
-    int oldPosIndex = (ctx.snakeHead->x * ctx.mapSize) + ctx.snakeHead->y;
+    int oldPosIndex = (ctx.snakeTail->x * ctx.mapSize) + ctx.snakeTail->y;
 
     switch (ctx.map[checkIndex]) {
     case 'b':
         break;
     case 'f':
-        break;
+        SpawnFood(ctx);
     case '0':
         ctx.map[checkIndex] = 's';
         ctx.map[oldPosIndex] = '0';
@@ -239,10 +255,10 @@ int main() {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Couldn't initialize SDL: %s", SDL_GetError());
         return 1;
     }
-
+    srand(time(nullptr));
     GameCTX ctx;
 
-    if (!SDL_CreateWindowAndRenderer("Snake", 1920, 1080, SDL_WINDOW_RESIZABLE, &ctx.window,
+    if (!SDL_CreateWindowAndRenderer("Snake", 960, 540, SDL_WINDOW_RESIZABLE, &ctx.window,
                                      &ctx.renderer)) {
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Couldn't create window/renderer: %s", SDL_GetError());
         return 1;
@@ -252,10 +268,12 @@ int main() {
     SDL_Event event;
 
     ctx.snakeHead = new SnakeBodyPart;
+    ctx.snakeTail = ctx.snakeHead;
 
     constexpr int MAP_SIZE = 40;
     InitMap(ctx, MAP_SIZE);
     DebugPrintMap(ctx, MAP_SIZE);
+    SpawnFood(ctx);
 
     ctx.textures[TEXTURE_BARRIER] = LoadTexture(ctx, "barrier.png");
     ctx.textures[TEXTURE_GROUND] = LoadTexture(ctx, "ground.png");
@@ -301,7 +319,7 @@ int main() {
         moveCounter += ctx.deltaTime;
         if (moveCounter >= ctx.snakeSpeed) {
             moveCounter -= ctx.snakeSpeed;
-            MoveSnake(ctx);
+            UpdateSnake(ctx);
         }
 
         DrawFrame(ctx);
